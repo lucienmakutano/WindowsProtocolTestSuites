@@ -59,7 +59,7 @@
         WindowsServerV22H2 = 0x10000012,
         WindowsServer2025 = 0x10000013, 
     -->
-	  <Property name="DriverPlatform" value="WindowsServer2025"/>
+        <Property name="DriverPlatform" value="NonWindows"/>
 
 	  <!--The transport of RDMA card
 	        InfiniBand,

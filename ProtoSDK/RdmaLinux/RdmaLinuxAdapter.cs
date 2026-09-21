@@ -288,7 +288,6 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.RdmaLinux
 
                 isConnected = false;
                 handleToDisconnect = clientHandle;
-                clientHandle = IntPtr.Zero;
             }
 
             // Wait for in-flight native calls to complete before destroying the native client
@@ -303,15 +302,19 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.RdmaLinux
                 }
             }
 
-            // Clean up pending receives
-            List<long> pendingMrHandles;
+            // Stop tracking pending receives before releasing all registered buffers.
             lock (recvLock)
             {
-                pendingMrHandles = pendingReceiveHandles.Values.ToList();
                 pendingReceiveHandles.Clear();
             }
 
-            foreach (var mrHandle in pendingMrHandles)
+            List<long> registeredMrHandles;
+            lock (mrLock)
+            {
+                registeredMrHandles = registeredBuffers.Keys.ToList();
+            }
+
+            foreach (var mrHandle in registeredMrHandles)
             {
                 try
                 {
@@ -319,7 +322,15 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.RdmaLinux
                 }
                 catch (Exception ex)
                 {
-                    LogDebug($"Failed to deregister pending receive: {ex.Message}");
+                    LogDebug($"Failed to deregister buffer during disconnect: {ex.Message}");
+                }
+            }
+
+            lock (connectionLock)
+            {
+                if (clientHandle == handleToDisconnect)
+                {
+                    clientHandle = IntPtr.Zero;
                 }
             }
 

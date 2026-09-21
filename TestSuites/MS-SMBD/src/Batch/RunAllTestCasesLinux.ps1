@@ -2,16 +2,16 @@
 # Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 param(
-    [switch]$DryRun = $false # If set, just list all test cases instead of running tests actually.
+    [switch]$DryRun = $false, # If set, just list all test cases instead of running tests actually.
+    [string]$BinPath = ""
 )
 
-$invocationPath = "/mnt/server-endpoint/Batch".ToLower()
+$invocationPath = $PSScriptRoot
 
 Write-Host "Running all test cases in MS-SMBD test suite..."
 Write-Host "Path: $invocationPath"
 
-$script = Join-Path $invocationPath "RunTestCasesByFilterLinux.ps1".ToLower()
+$script = Join-Path $invocationPath "RunTestCasesByFilterLinux.ps1"
 
-$cmd = "$script -DryRun:`$(`$DryRun.IsPresent)"
-
-Invoke-Expression $cmd
+& $script -DryRun:$DryRun.IsPresent -BinPath $BinPath
+exit $LASTEXITCODE

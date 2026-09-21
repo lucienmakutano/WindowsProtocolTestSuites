@@ -113,13 +113,18 @@ mkdir -p "$OUTDIR/Bin" #
 # ==========================================
 # start to build MS-SMBD test suite using dotnet
 # ==========================================
-dotnet publish MS-SMBD_Server.sln --no-dependencies -o "$OUTDIR/Bin" -c "$CONFIGURATION"
-PUBLISH_STATUS=$?
+managed_projects=(
+    "Adapter/MS-SMBD_ServerAdapter.csproj"
+    "Plugin/SMBDPlugin/SMBDPlugin.csproj"
+    "TestSuite/MS-SMBD_ServerTestSuite.csproj"
+)
 
-if [ $PUBLISH_STATUS -ne 0 ]; then
-    echo "Build failed. Exiting script."
-    # exit 1
-fi
+for project in "${managed_projects[@]}"; do
+    if ! dotnet publish "$project" --no-dependencies -o "$OUTDIR/Bin" -c "$CONFIGURATION"; then
+        echo "Failed to publish $project. Exiting script."
+        exit 1
+    fi
+done
 
 # copy plugin files
 cp -r "$TEST_SUITE_ROOT/TestSuites/MS-SMBD/src/Plugin/SMBDPlugin/"*.xml "$PLUGIN_DIR/"

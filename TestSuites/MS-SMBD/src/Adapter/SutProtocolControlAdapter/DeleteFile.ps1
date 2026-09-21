@@ -37,27 +37,14 @@ if ($env:OS -eq "Windows_NT") {
 } else {
 	try {
 		if (-Not (Test-Path /mnt/$PtfProp_ShareFolder)) {
-    			sudo mkdir -p /mnt/$PtfProp_ShareFolder
-		}
-		
-		$osRelease = Get-Content /etc/os-release
-		$osID = $osRelease | Where-Object { $_ -match "^ID=" } | ForEach-Object { $_.Split('=')[1].Trim('"') }
-
-		if ($osID -match "debian") {
-    		sudo apt-get install -y cifs-utils
-		} elseif ($osID -match "rhel" -or $osID -match "centos" -or $osID -match "fedora") {
-    		sudo dnf install -y cifs-utils
-		} elseif ($osID -match "suse") {
-			sudo zypper install -y cifs-utils
-		} else {
-    		Write-Host "Unknown system type."
+				sudo -n mkdir -p /mnt/$PtfProp_ShareFolder
 		}
 
-		sudo bash -c "mount | grep cifs | awk '{print $3}' | xargs -I {} sudo umount {}"
-		sudo bash -c "mount -t cifs //$PtfProp_SutComputerName/$PtfProp_ShareFolder /mnt/$PtfProp_ShareFolder -o username='$userName',password='$password'"
-		sudo rm -f "/mnt/$PtfProp_ShareFolder/$fileName"
-		sudo umount /mnt/$PtfProp_ShareFolder
+		sudo -n bash -c "mount | grep cifs | awk '{print `$3}' | xargs -r umount"
+		sudo -n mount -t cifs "//$PtfProp_SutComputerName/$PtfProp_ShareFolder" "/mnt/$PtfProp_ShareFolder" -o "username=$userName,password=$password"
+		sudo -n rm -f "/mnt/$PtfProp_ShareFolder/$fileName"
+		sudo -n umount "/mnt/$PtfProp_ShareFolder"
 	} catch {
-        sudo bash -c "mount | grep cifs | awk '{print $3}' | xargs -I {} sudo umount {}"
+		sudo -n bash -c "mount | grep cifs | awk '{print `$3}' | xargs -r umount"
 	}
 }
