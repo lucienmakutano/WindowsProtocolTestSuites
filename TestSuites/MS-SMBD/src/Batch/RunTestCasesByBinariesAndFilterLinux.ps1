@@ -76,15 +76,13 @@ if (-not $DryRun -and $IsLinux) {
     $memlockLimit = if ($memlockLine -match "^Max locked memory\s+(\S+)") { $Matches[1] } else { "unknown" }
 
     if ($memlockLimit -ne "unlimited" -and [long]$memlockLimit -lt 67108864) {
-        & sudo -n true 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "The RDMA tests require at least 64 MiB of locked memory; this process is limited to $memlockLimit bytes. Raise the memlock limit or configure passwordless sudo for prlimit."
-            exit 1
-        }
+        Write-Host "The RDMA tests require at least 64 MiB of locked memory; this process is limited to $memlockLimit bytes."
+        Write-Host "Prompting for sudo so the memlock limit can be raised for this test process..."
 
         $userId = (& id -u).Trim()
         $groupId = (& id -g).Trim()
-        & sudo -n prlimit --memlock=unlimited:unlimited -- setpriv "--reuid=$userId" "--regid=$groupId" --init-groups env "HOME=$HOME" "PATH=$env:PATH" $dotnetCommand @dotnetArguments
+
+        & sudo prlimit --memlock=unlimited:unlimited -- setpriv "--reuid=$userId" "--regid=$groupId" --init-groups env "HOME=$HOME" "PATH=$env:PATH" $dotnetCommand @dotnetArguments
         exit $LASTEXITCODE
     }
 }
