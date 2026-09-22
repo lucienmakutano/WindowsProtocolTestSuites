@@ -137,6 +137,75 @@ connection_for_interface() {
     nmcli -g GENERAL.CONNECTION device show "$1" 2>/dev/null | head -n 1
 }
 
+ensure_networkmanager_profile() {
+    local interface_name="$1"
+    local address="$2"
+    local connection_name
+
+    connection_name="$(connection_for_interface "$interface_name")"
+    if [[ -n "$connection_name" ]]; then
+        return 0
+    fi
+
+    if ! $CONFIGURE; then
+        fail "No NetworkManager connection owns $interface_name"
+        return 1
+    fi
+
+    if ! command -v nmcli >/dev/null 2>&1; then
+        fail "NetworkManager is required to configure $interface_name but nmcli is unavailable"
+        return 1
+    fi
+
+    connection_name="${interface_name}-static"
+    run_as_root nmcli connection add type ethernet ifname "$interface_name" con-name "$connection_name" >/dev/null 2>&1 || true
+    run_as_root nmcli connection modify "$connection_name" ipv4.method manual ipv4.addresses "${address}/${PREFIX_LENGTH}" ipv4.never-default yes connection.autoconnect yes >/dev/null 2>&1 || true
+    run_as_root nmcli device connect "$interface_name" >/dev/null 2>&1 || true
+
+    connection_name="$(connection_for_interface "$interface_name")"
+    if [[ -n "$connection_name" ]]; then
+        pass "Created NetworkManager profile for $interface_name"
+        return 0
+    fi
+
+    fail "No NetworkManager connection owns $interface_name after configuration"
+    return 1
+}
+
+ensure_interface_enabled() {
+    local interface_name="$1"
+    local driver_name=""
+    local link_path=""
+
+    if [[ -z "$interface_name" || ! -d "/sys/class/net/$interface_name" ]]; then
+        return
+    fi
+
+    link_path="$(readlink -f "/sys/class/net/$interface_name/device/driver" 2>/dev/null || true)"
+    if [[ -n "$link_path" ]]; then
+        driver_name="$(basename "$link_path")"
+        if [[ -n "$driver_name" ]] && command -v modprobe >/dev/null 2>&1 && ! lsmod 2>/dev/null | awk '{print $1}' | grep -qx "$driver_name"; then
+            if $CONFIGURE; then
+                run_as_root modprobe "$driver_name"
+                pass "Loaded network driver module $driver_name for $interface_name"
+            else
+                fail "Network driver module $driver_name is not loaded for $interface_name"
+            fi
+        fi
+    fi
+
+    if ip link show dev "$interface_name" 2>/dev/null | grep -q 'state DOWN'; then
+        if $CONFIGURE; then
+            run_as_root ip link set "$interface_name" up
+            pass "Enabled network interface $interface_name"
+        else
+            fail "$interface_name is down and must be enabled"
+        fi
+    else
+        pass "$interface_name is already enabled"
+    fi
+}
+
 ensure_host_route() {
     local interface_name="$1"
     local source_address="$2"
@@ -189,6 +258,7 @@ ensure_address() {
         return
     fi
 
+    ensure_networkmanager_profile "$interface_name" "$address"
     connection_name="$(connection_for_interface "$interface_name")"
     if [[ -z "$connection_name" ]]; then
         fail "No NetworkManager connection owns $interface_name"
@@ -218,9 +288,39 @@ required_packages=(
     build-essential cmake wget libibverbs-dev librdmacm-dev
 )
 
-if $CONFIGURE; then
+install_missing_packages() {
+    local missing_packages=()
+    local package_name
+
+    for package_name in "${required_packages[@]}"; do
+        if ! package_installed "$package_name"; then
+            missing_packages+=("$package_name")
+        fi
+    done
+
+    if [[ ${#missing_packages[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    if ! $CONFIGURE; then
+        return 1
+    fi
+
+    printf 'Installing missing packages: %s\n' "${missing_packages[*]}"
     run_as_root apt-get update
-    run_as_root apt-get install -y "${required_packages[@]}"
+    run_as_root apt-get install -y "${missing_packages[@]}"
+
+    for package_name in "${missing_packages[@]}"; do
+        if package_installed "$package_name"; then
+            pass "Package $package_name is installed after configuration"
+        else
+            fail "Package $package_name could not be installed"
+        fi
+    done
+}
+
+if $CONFIGURE; then
+    install_missing_packages || true
 fi
 
 for package_name in "${required_packages[@]}"; do
@@ -264,8 +364,17 @@ fi
 
 if [[ -z "$dotnet_command" || -z "$($dotnet_command --list-sdks 2>/dev/null | grep '^8\.' || true)" ]]; then
     if $CONFIGURE; then
-        run_as_root apt-get install -y dotnet-sdk-8.0
-        dotnet_command="$(command -v dotnet || true)"
+        dotnet_install_script="$SCRIPT_DIRECTORY/../../../dotnet-install.sh"
+        if [[ -f "$dotnet_install_script" ]]; then
+            mkdir -p "$HOME/.dotnet"
+            bash "$dotnet_install_script" --channel 8.0 --install-dir "$HOME/.dotnet" >/dev/null
+            dotnet_command="$HOME/.dotnet/dotnet"
+        else
+            run_as_root apt-get install -y wget
+            wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+            bash /tmp/dotnet-install.sh --channel 8.0 --install-dir "$HOME/.dotnet" >/dev/null
+            dotnet_command="$HOME/.dotnet/dotnet"
+        fi
     fi
 fi
 
@@ -325,6 +434,8 @@ if [[ -z "$PRIMARY_INTERFACE" || -z "$SECONDARY_INTERFACE" ]]; then
 elif [[ "$PRIMARY_INTERFACE" == "$SECONDARY_INTERFACE" ]]; then
     fail "Primary and secondary test interfaces must be different"
 else
+    ensure_interface_enabled "$PRIMARY_INTERFACE"
+    ensure_interface_enabled "$SECONDARY_INTERFACE"
     ensure_address "$PRIMARY_INTERFACE" "$CLIENT_RNIC_IP"
     ensure_address "$SECONDARY_INTERFACE" "$CLIENT_SECONDARY_IP"
     ensure_host_route "$PRIMARY_INTERFACE" "$CLIENT_RNIC_IP" "$SERVER_RNIC_IP"
