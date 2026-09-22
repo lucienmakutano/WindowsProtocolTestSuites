@@ -379,7 +379,19 @@ if [[ -z "$dotnet_command" || -z "$($dotnet_command --list-sdks 2>/dev/null | gr
 fi
 
 if [[ -n "$dotnet_command" && -n "$($dotnet_command --list-sdks 2>/dev/null | grep '^8\.' || true)" ]]; then
-    pass ".NET 8 SDK is installed via $dotnet_command"
+    export_path_entry="export PATH=\"\$HOME/.dotnet:\$PATH\""
+    if [[ "$dotnet_command" == "$HOME/.dotnet/dotnet" ]]; then
+        if ! grep -Fqx "$export_path_entry" "$HOME/.bashrc" 2>/dev/null; then
+            printf '\n# Added by MS-SMBD RDMA readiness script\n%s\n' "$export_path_entry" >> "$HOME/.bashrc"
+        fi
+        if [[ -f "$HOME/.profile" ]] && ! grep -Fqx "$export_path_entry" "$HOME/.profile" 2>/dev/null; then
+            printf '\n# Added by MS-SMBD RDMA readiness script\n%s\n' "$export_path_entry" >> "$HOME/.profile"
+        fi
+        export PATH="$HOME/.dotnet:$PATH"
+        pass ".NET 8 SDK is installed via $dotnet_command and added to PATH"
+    else
+        pass ".NET 8 SDK is installed via $dotnet_command"
+    fi
 else
     fail ".NET 8 SDK is not installed"
 fi

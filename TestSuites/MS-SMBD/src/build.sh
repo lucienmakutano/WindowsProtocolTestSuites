@@ -6,6 +6,9 @@
 #  Start to build MS-SMBD test suite
 # ==========================================
 
+export PATH="$HOME/.dotnet:$PATH"
+source ~/.bashrc 2>/dev/null || source ~/.profile 2>/dev/null || true
+
 # set default values
 CONFIGURATION="Release"
 OUTDIR=""
@@ -114,14 +117,14 @@ mkdir -p "$OUTDIR/Bin" #
 # start to build MS-SMBD test suite using dotnet
 # ==========================================
 managed_projects=(
-    "Adapter/MS-SMBD_ServerAdapter.csproj"
-    "Plugin/SMBDPlugin/SMBDPlugin.csproj"
-    "TestSuite/MS-SMBD_ServerTestSuite.csproj"
+    "$INVOCATION_PATH/Adapter/MS-SMBD_ServerAdapter.csproj"
+    "$INVOCATION_PATH/Plugin/SMBDPlugin/SMBDPlugin.csproj"
+    "$INVOCATION_PATH/TestSuite/MS-SMBD_ServerTestSuite.csproj"
 )
 
 for project in "${managed_projects[@]}"; do
-    if ! dotnet publish "$project" --no-dependencies -o "$OUTDIR/Bin" -c "$CONFIGURATION"; then
-        echo "Failed to publish $project. Exiting script."
+    if ! dotnet publish "$project" -o "$OUTDIR/Bin" -c "$CONFIGURATION"; then
+        echo "Failed to publish ${project#$INVOCATION_PATH/}. Exiting script."
         exit 1
     fi
 done
